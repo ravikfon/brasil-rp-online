@@ -1,0 +1,145 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no">
+<title>Brasil RP Online — Protótipo 0.1</title>
+<style>
+:root{--bg:#101820;--panel:#182632;--text:#f2f5f7;--muted:#a9bac5;--accent:#42c58a}
+*{box-sizing:border-box} html,body{margin:0;background:var(--bg);color:var(--text);font-family:system-ui,Arial,sans-serif;overflow:hidden}
+#wrap{height:100dvh;display:flex;flex-direction:column}
+header{padding:10px 14px;background:#101820;display:flex;justify-content:space-between;align-items:center;gap:10px}
+h1{font-size:16px;margin:0} #status{font-size:12px;color:var(--muted)}
+#gamebox{position:relative;flex:1;min-height:0;display:flex;align-items:center;justify-content:center;background:#0b1116}
+canvas{width:100%;height:100%;object-fit:contain;touch-action:none}
+#hud{position:absolute;left:12px;top:12px;background:#101820dd;border:1px solid #ffffff22;border-radius:10px;padding:9px 11px;font-size:12px;line-height:1.5;pointer-events:none}
+#prompt{position:absolute;left:50%;bottom:14px;transform:translateX(-50%);background:#101820eF;border:1px solid #ffffff33;border-radius:10px;padding:9px 14px;font-size:13px;text-align:center;max-width:90%;pointer-events:none}
+#touch{position:absolute;inset:auto 12px 15px 12px;display:flex;justify-content:space-between;align-items:end;pointer-events:none}
+.pad,.actions{display:grid;gap:5px;pointer-events:auto}
+.pad{grid-template-columns:44px 44px 44px;grid-template-rows:44px 44px 44px}
+.pad button,.actions button{border:1px solid #ffffff55;background:#182632dd;color:white;border-radius:12px;font-size:18px;touch-action:none}
+.pad button{width:44px;height:44px}.pad .empty{visibility:hidden}
+.actions{grid-template-columns:62px 62px}.actions button{height:48px;font-size:12px;font-weight:700}
+footer{background:#101820;color:var(--muted);font-size:11px;padding:7px 12px;text-align:center}
+@media (min-width:800px){#touch{opacity:.72}.pad button{width:50px;height:50px}.pad{grid-template-columns:50px 50px 50px;grid-template-rows:50px 50px 50px}}
+</style>
+</head>
+<body>
+<div id="wrap">
+<header><h1>🇧🇷 BRASIL RP ONLINE <span style="color:#42c58a">0.1</span></h1><div id="status">Protótipo local • teste de movimentação</div></header>
+<div id="gamebox">
+<canvas id="game" width="960" height="640" aria-label="Protótipo de cidade visto de cima"></canvas>
+<div id="hud"><b>VILA NOVA</b><br>Dinheiro: R$ 500<br>Trabalho: Desempregado<br><span id="coords">X: 0 · Y: 0</span></div>
+<div id="prompt">Explore a cidade. Vá até a Prefeitura e pressione A / E para conversar.</div>
+<div id="touch">
+ <div class="pad">
+  <button class="empty"></button><button data-key="up">▲</button><button class="empty"></button>
+  <button data-key="left">◀</button><button data-key="down">▼</button><button data-key="right">▶</button>
+  <button class="empty"></button><button class="empty"></button><button class="empty"></button>
+ </div>
+ <div class="actions"><button id="interact">A<br>INTERAGIR</button><button id="run">B<br>CORRER</button></div>
+</div>
+</div>
+<footer>Teclado: WASD/setas • Interagir: E ou Espaço • Controle: analógico esquerdo + A • Celular: botões na tela</footer>
+</div>
+<script>
+(()=>{
+const canvas=document.getElementById('game'),ctx=canvas.getContext('2d');
+const prompt=document.getElementById('prompt'),coords=document.getElementById('coords');
+const player={x:480,y:510,r:11,speed:2.35};
+const keys={}; let interact=false, running=false, messageTimer=0, job="Desempregado", previousA=false;
+const buildings=[
+ {x:90,y:80,w:170,h:105,name:"PREFEITURA",color:"#d7b77c",desc:"Prefeitura: fale com o atendente para conhecer os serviços da cidade."},
+ {x:385,y:70,w:160,h:110,name:"DELEGACIA",color:"#8fa9bf",desc:"Delegacia: aqui ficará o sistema de polícia. (Em desenvolvimento)"},
+ {x:700,y:80,w:170,h:105,name:"HOSPITAL",color:"#e5e7e8",desc:"Hospital: aqui ficará o serviço médico. (Em desenvolvimento)"},
+ {x:100,y:390,w:170,h:115,name:"MERCADO",color:"#d28b62",desc:"Mercado: comércio local. (Em desenvolvimento)"},
+ {x:690,y:390,w:180,h:115,name:"OFICINA",color:"#9b9b72",desc:"Oficina: manutenção de veículos. (Em desenvolvimento)"}
+];
+function rect(x,y,w,h,c){ctx.fillStyle=c;ctx.fillRect(x,y,w,h)}
+function draw(){
+ // grass and blocks
+ rect(0,0,960,640,"#648b5c");
+ // roads
+ rect(0,255,960,125,"#454b50"); rect(300,0,75,640,"#454b50"); rect(610,0,75,640,"#454b50");
+ // sidewalks
+ rect(0,247,960,8,"#b8b7a5");rect(0,380,960,8,"#b8b7a5");
+ rect(292,0,8,640,"#b8b7a5");rect(375,0,8,640,"#b8b7a5");
+ rect(602,0,8,640,"#b8b7a5");rect(685,0,8,640,"#b8b7a5");
+ // road markings
+ ctx.strokeStyle="#e8d78c";ctx.lineWidth=3;ctx.setLineDash([22,18]);ctx.beginPath();ctx.moveTo(0,317);ctx.lineTo(960,317);ctx.stroke();ctx.beginPath();ctx.moveTo(337,0);ctx.lineTo(337,640);ctx.stroke();ctx.beginPath();ctx.moveTo(647,0);ctx.lineTo(647,640);ctx.stroke();ctx.setLineDash([]);
+ // park
+ rect(405,420,145,145,"#477b4e");ctx.fillStyle="#77a96b";for(let i=0;i<6;i++){ctx.beginPath();ctx.arc(425+(i%3)*48,440+Math.floor(i/3)*55,12,0,Math.PI*2);ctx.fill()}
+ // buildings
+ for(const b of buildings){
+  ctx.fillStyle="#26352c";ctx.fillRect(b.x+7,b.y+8,b.w,b.h);
+  rect(b.x,b.y,b.w,b.h,b.color);rect(b.x,b.y,b.w,17,"#ffffff55");
+  rect(b.x+b.w/2-17,b.y+b.h-35,34,35,"#66594c");
+  ctx.fillStyle="#24313a";ctx.font="bold 13px system-ui";ctx.textAlign="center";ctx.fillText(b.name,b.x+b.w/2,b.y+42);
+  ctx.fillStyle="#ffffffaa";ctx.font="10px system-ui";ctx.fillText("VILA NOVA",b.x+b.w/2,b.y+58);
+ }
+ // street trees
+ for(const [x,y] of [[45,210],[550,210],[900,210],[45,420],[560,590],[900,550],[420,210],[750,220]]){
+  ctx.fillStyle="#5a3e2a";ctx.fillRect(x-3,y,6,13);ctx.fillStyle="#2f663b";ctx.beginPath();ctx.arc(x,y,13,0,Math.PI*2);ctx.fill();
+ }
+ // player shadow and character
+ ctx.fillStyle="#0005";ctx.beginPath();ctx.ellipse(player.x,player.y+8,13,6,0,0,Math.PI*2);ctx.fill();
+ ctx.fillStyle="#f1c27d";ctx.beginPath();ctx.arc(player.x,player.y-5,7,0,Math.PI*2);ctx.fill();
+ ctx.fillStyle="#2878c8";ctx.fillRect(player.x-8,player.y+1,16,17);
+ ctx.fillStyle="#17222b";ctx.fillRect(player.x-7,player.y+16,5,7);ctx.fillRect(player.x+2,player.y+16,5,7);
+ ctx.fillStyle="white";ctx.font="bold 11px system-ui";ctx.textAlign="center";ctx.fillText("VOCÊ",player.x,player.y-20);
+ // interaction marker
+ const near=nearestBuilding();
+ if(near){ctx.strokeStyle="#ffe27a";ctx.lineWidth=3;ctx.strokeRect(near.x-4,near.y-4,near.w+8,near.h+8)}
+}
+function nearestBuilding(){
+ let best=null,bd=9999;
+ for(const b of buildings){const cx=b.x+b.w/2,cy=b.y+b.h/2,d=Math.hypot(player.x-cx,player.y-cy);if(d<bd){bd=d;best=b}}
+ return bd<125?best:null;
+}
+function setPrompt(t){prompt.textContent=t;messageTimer=180}
+function move(dx,dy){
+ const sp=player.speed*(running?1.65:1);
+ const nx=Math.max(15,Math.min(945,player.x+dx*sp)),ny=Math.max(25,Math.min(625,player.y+dy*sp));
+ // simple building collision
+ let blocked=false;
+ for(const b of buildings){if(nx>b.x-12&&nx<b.x+b.w+12&&ny>b.y-12&&ny<b.y+b.h+12)blocked=true}
+ if(!blocked){player.x=nx;player.y=ny}
+}
+function doInteract(){
+ const b=nearestBuilding();
+ if(b){
+  if(b.name==="PREFEITURA"){job="Cidadão";document.querySelector('#hud').innerHTML='<b>VILA NOVA</b><br>Dinheiro: R$ 500<br>Trabalho: '+job+'<br><span id="coords">X: '+Math.round(player.x)+' · Y: '+Math.round(player.y)+'</span>';setPrompt("Prefeitura: cadastro de cidadão concluído! Seu primeiro emprego será adicionado em uma próxima versão.")}
+  else setPrompt(b.desc);
+ }else setPrompt("Não há ninguém ou nenhum local interativo por perto. Explore a cidade!");
+}
+function frame(){
+ let dx=0,dy=0;
+ if(keys.ArrowUp||keys.w||keys.W||keys.up)dy--;
+ if(keys.ArrowDown||keys.s||keys.S||keys.down)dy++;
+ if(keys.ArrowLeft||keys.a||keys.A||keys.left)dx--;
+ if(keys.ArrowRight||keys.d||keys.D||keys.right)dx++;
+ // Xbox controller support via Gamepad API
+ const pads=navigator.getGamepads?navigator.getGamepads():[];
+ let aNow=false; for(const p of pads){if(p){const ax=p.axes[0]||0,ay=p.axes[1]||0;if(Math.abs(ax)>.18)dx=ax;if(Math.abs(ay)>.18)dy=ay;if(p.buttons[0]?.pressed)aNow=true;if(p.buttons[1]?.pressed)running=true}} if(aNow&&!previousA)doInteract(); previousA=aNow;
+ if(dx||dy){const len=Math.hypot(dx,dy)||1;move(dx/len,dy/len)}
+ const b=nearestBuilding();
+ if(messageTimer>0)messageTimer--;
+ else prompt.textContent=b?"Pressione A / E para interagir com "+b.name+".":"Explore a cidade. Encontre a Prefeitura para começar sua vida em Vila Nova.";
+ coords.textContent="X: "+Math.round(player.x)+" · Y: "+Math.round(player.y);
+ draw();interact=false;running=false;requestAnimationFrame(frame);
+}
+window.addEventListener('keydown',e=>{keys[e.key]=true;if(["ArrowUp","ArrowDown","ArrowLeft","ArrowRight"," "].includes(e.key))e.preventDefault();if(e.key.toLowerCase()==="e"||e.key===" ")doInteract();if(e.key==="Shift")running=true});
+window.addEventListener('keyup',e=>{keys[e.key]=false;if(e.key==="Shift")running=false});
+document.querySelectorAll('[data-key]').forEach(btn=>{
+ const k=btn.dataset.key;btn.addEventListener('pointerdown',e=>{e.preventDefault();keys[k]=true;btn.setPointerCapture(e.pointerId)});
+ const off=()=>keys[k]=false;btn.addEventListener('pointerup',off);btn.addEventListener('pointercancel',off);btn.addEventListener('lostpointercapture',off);
+});
+document.getElementById('interact').addEventListener('pointerdown',e=>{e.preventDefault();doInteract()});
+document.getElementById('run').addEventListener('pointerdown',e=>{e.preventDefault();running=true});
+document.getElementById('run').addEventListener('pointerup',()=>running=false);
+document.getElementById('run').addEventListener('pointercancel',()=>running=false);
+frame();
+})();
+</script>
+</body>
+</html>
